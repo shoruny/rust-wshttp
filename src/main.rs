@@ -1,5 +1,8 @@
-use httpv2::http::serv;
+use std::env;
+
+use httpv3::{config::config::Config, http::serv};
 
 pub fn main() {
-    serv::run();
+    let config = Config::build(env::args().collect());
+    serv::run(format!("0.0.0.0:{}", config.port), config.path);
 }

@@ -2,25 +2,34 @@ use std::{
     io::{self, Write},
     net::{TcpListener, TcpStream},
     path::PathBuf,
+    sync::Arc,
 };
 
 use percent_encoding::percent_decode_str;
 
-use crate::http::{
-    request::{check_path, erase_query_params, get_headers, get_path},
-    response::{build_file_response, build_response},
+use crate::{
+    http::{
+        request::{check_path, erase_query_params, get_headers, get_path},
+        response::{build_file_response, build_response},
+    },
+    ThreadPool,
 };
 
-pub fn run() {
-    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+pub fn run(serv: String, root: String) {
+    let listener = TcpListener::bind(serv).unwrap();
+    let pool = ThreadPool::build(7).unwrap();
+    let path = Arc::new(root);
     for incomming in listener.incoming() {
         let Ok(stream) = incomming else {
             continue;
         };
-        let _ = handle(stream);
+        let root = Arc::clone(&path);
+        pool.execute(move || {
+            _ = handle(stream, root);
+        });
     }
 }
-pub fn handle(mut stream: TcpStream) -> io::Result<()> {
+pub fn handle(mut stream: TcpStream, root: Arc<String>) -> io::Result<()> {
     let lines = get_headers(&stream);
     let header = lines.get(0);
 
@@ -38,8 +47,9 @@ pub fn handle(mut stream: TcpStream) -> io::Result<()> {
         stream.flush()?;
         return Ok(());
     };
+    // "/Volumes/nvme/.hide/commic"
     let path = erase_query_params(uri);
-    let mut dir = PathBuf::from("/Volumes/nvme/.hide/commic");
+    let mut dir = PathBuf::from(&*root);
     dir.push(percent_decode_str(path).decode_utf8_lossy().to_string());
     let mut response: Vec<u8> = vec![];
     if dir.is_file() {

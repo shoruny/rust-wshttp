@@ -1,5 +1,5 @@
 [package]
-name = "httpv2"
+name = "httpv3"
 version = "0.1.0"
 edition = "2024"
 
