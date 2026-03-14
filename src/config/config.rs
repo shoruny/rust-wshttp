@@ -1,34 +1,42 @@
+use std::{
+    env, fs,
+    path::{self, PathBuf},
+};
+
 #[derive(Debug)]
 pub struct Config {
     pub port: u16,
     pub path: String,
 }
 impl Config {
-    pub fn build(mut args: Vec<String>) -> Config {
-        if args.len() < 3 {
+    pub fn build(args: Vec<String>) -> Config {
+        if args.len() < 2 {
             panic!("not enough arguments");
         }
-        let path = std::mem::take(&mut args[2]);
+        let input = args.get(2).cloned().unwrap_or_default();
+        let input_path = PathBuf::from(input);
+
+        let absolute_path = if input_path.is_absolute() {
+            input_path
+        } else {
+            // 只有在需要时才尝试获取当前目录
+            env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(input_path)
+        };
+
+        // 最终丢给线程的字符串
+        let thread_safe_path = absolute_path.to_string_lossy().into_owned();
+
         let port = args[1]
             .parse::<u16>()
             .ok()
             .filter(|&p| p != 0)
             .unwrap_or(8080);
-        // let port: String = match args.get(1) {
-        //     Some(port) => port.clone(),
-        //     None => String::from("8080"),
-        // };
-        // let parsed = port.parse::<u16>();
-        // config.port = match parsed {
-        //     Ok(port) => port,
-        //     _ => 8080u16,
-        // };
-        // config.port = if config.port == 0 { 8080 } else { config.port };
-        // config.path = match args.get(2) {
-        //     Some(path) => path.clone(),
-        //     None => String::from(""),
-        // };
-        Config { port, path }
+        Config {
+            port,
+            path: thread_safe_path,
+        }
     }
 }
 
