@@ -104,22 +104,24 @@ pub fn handle(mut stream: TcpStream, root: Arc<String>) -> io::Result<()> {
                     let mut len: u64 = (buf[1] & 0x7F) as u64;
                     let mut header_len = 2;
                     if len == 126 && buf.len() < 4 {
-                        header_len = 4;
                         continue;
                     } else if len == 127 {
                         println!("包太大，溜了溜了");
                         return Ok(());
                     }
                     if len == 126 {
+                        header_len = 4;
                         len = u16::from_be_bytes([buf[2], buf[3]]) as u64;
                     }
                     if buf.len() < (header_len + len + 4) as usize {
                         continue;
                     }
+
                     // println!("is_fin: {fin}, opcode: {opcode}, is_masked: {is_masked}, len: {len}, {buf:#?}");
                     let _ = buf.split_to(header_len as usize);
                     let mask = buf.split_to(4).to_vec();
                     let body = buf.split_to(len as usize).to_vec();
+
                     let mut decoded_body = body;
 
                     // 2. 进行 XOR 异或运算
@@ -128,17 +130,30 @@ pub fn handle(mut stream: TcpStream, root: Arc<String>) -> io::Result<()> {
                         decoded_body[i] ^= mask[i % 4];
                     }
 
-                    // 3. 现在可以转 String 了
+                    if opcode == 0x08 {
+                        // 关闭
+                        let _ = stream.write_all(&[0x88, 0x00]);
+                        let _ = stream.flush();
+                        return Ok(());
+                    }
                     let message = String::from_utf8_lossy(&decoded_body);
                     println!("解密后的消息: {}", message);
-                    // println!("is_fin: {fin}, opcode: {opcode}, is_masked: {is_masked}, len: {len}, {buf:#?}");
                     println!("is_fin: {fin}, opcode: {opcode}, is_masked: {is_masked}, len: {len}, body: {message}");
-                    // 收到 n 字节数据，开始解析 WebSocket Frame
                     println!("收到来自的数据: {} 字节", n);
+
                     let mut frame = Vec::with_capacity(2 + message.len());
                     frame.push(0x81);
-                    frame.push(message.len() as u8);
-                    frame.extend_from_slice(message.as_bytes());
+                    let message = format!("收到了{}", message);
+                    println!("{message}");
+                    let send = message.as_bytes();
+                    if send.len() <= 125 {
+                        frame.push(send.len() as u8);
+                    } else {
+                        frame.push(126u8);
+                        let bytes = (send.len() as u16).to_be_bytes();
+                        frame.extend_from_slice(&bytes);
+                    }
+                    frame.extend_from_slice(send);
                     stream.write_all(&frame).unwrap();
                 }
                 Err(e) => {
