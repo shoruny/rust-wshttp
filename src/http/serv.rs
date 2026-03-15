@@ -13,7 +13,7 @@ use crate::{
     ThreadPool,
 };
 use base64::{engine::general_purpose, Engine};
-use bytes::{buf, BufMut, BytesMut};
+use bytes::{BufMut, BytesMut};
 use percent_encoding::percent_decode_str;
 use sha1::{Digest, Sha1};
 
