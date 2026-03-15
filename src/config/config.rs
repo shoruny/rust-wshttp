@@ -1,7 +1,4 @@
-use std::{
-    env, fs,
-    path::{self, PathBuf},
-};
+use std::{env, path::PathBuf};
 
 #[derive(Debug)]
 pub struct Config {

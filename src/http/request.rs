@@ -1,30 +1,69 @@
 use std::{
-    io::{BufRead, BufReader},
+    collections::HashMap,
+    io::{self, Read},
     net::TcpStream,
 };
 
-pub fn get_headers(stream: &TcpStream) -> Vec<String> {
-    let reader = BufReader::new(stream);
-    let lines: Vec<String> = reader
-        .lines()
-        .map(|line| line.unwrap())
-        .take_while(|line| !line.is_empty())
-        .collect();
-    lines
-}
+use bytes::{BufMut, BytesMut};
+use httparse::{Status, EMPTY_HEADER};
 
-pub fn get_path(header: &str) -> &str {
-    let paths: Vec<&str> = header
-        .split_ascii_whitespace()
-        // .map(|s| s.to_string()) // 此时 paths 应为 Vec<String>
-        .collect();
-    let path = paths.get(1).copied().unwrap_or("/");
-    let path = match path {
-        "/" => "index.html",
-        _ => &path[1..],
-    };
-    // let path = &path[1..];
-    path
+#[derive(Debug)]
+pub struct ParsedHeader {
+    pub headers: HashMap<String, String>,
+    pub method: String,
+    pub path: String,
+    pub body: BytesMut,
+}
+impl ParsedHeader {
+    pub fn from(req: httparse::Request) -> ParsedHeader {
+        ParsedHeader {
+            method: req.method.unwrap_or("GET").to_string(),
+            path: req.path.unwrap_or("/").to_string(),
+            headers: req
+                .headers
+                .iter()
+                .filter(|h| !h.name.is_empty())
+                .map(|h| {
+                    (
+                        h.name.to_string(),
+                        String::from_utf8_lossy(h.value).to_string(),
+                    )
+                })
+                .collect(),
+            body: BytesMut::with_capacity(0),
+        }
+    }
+}
+pub fn get_headers(mut stream: &TcpStream) -> io::Result<ParsedHeader> {
+    let mut buf = BytesMut::with_capacity(4096);
+    let mut chunk = [0u8; 1024];
+    loop {
+        let n = stream.read(&mut chunk).unwrap_or(0);
+        if n == 0 {
+            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, ""));
+        }
+        buf.put_slice(&chunk[..n]);
+        let mut headers = [EMPTY_HEADER; 64];
+        let mut req = httparse::Request::new(&mut headers);
+        match req.parse(&buf) {
+            Ok(Status::Complete(amt)) => {
+                let req = ParsedHeader::from(req);
+                let len = req.headers.get("Content-Length");
+                let len = match len {
+                    Some(len) => len.to_string(),
+                    _ => "0".to_string(),
+                };
+                let len = len.parse::<u16>().unwrap_or(0);
+                let _ = buf.split_to(amt);
+                if len == 0 {
+                    assert_eq!(len, buf.len() as u16);
+                }
+                return Ok(req);
+            }
+            Ok(Status::Partial) => continue,
+            Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
+        }
+    }
 }
 
 pub fn check_path(path: &str) -> Result<&str, i16> {

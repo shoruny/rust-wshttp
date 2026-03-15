@@ -16,6 +16,7 @@ pub fn build_file_response(dir: &PathBuf) -> Vec<u8> {
     let ext = dir.extension().and_then(|s| s.to_str()).unwrap_or("");
     let content_type = match ext {
         "html" => "text/html",
+        "rs" => "text/plain",
         "css" => "text/css",
         "js" => "application/javascript",
         "png" => "image/png",
